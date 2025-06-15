@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile-Style Image Gallery</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align items to the top for vertical scroll */
+            min-height: 100vh; /* Ensure body takes full height */
+            margin: 0;
+            padding: 1.5rem; /* Add some padding around the gallery */
+            overflow-y: auto; /* Enable vertical scrolling for the body */
+            -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+        }
+
+        .gallery-container {
+            width: 100%;
+            max-width: 960px; /* Wider max-width for gallery grid */
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); /* Responsive grid columns */
+            gap: 1rem; /* Gap between images */
+            background-color: #ffffff;
+            border-radius: 1.5rem; /* rounded-3xl */
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .gallery-item {
+            position: relative;
+            width: 100%;
+            padding-bottom: 100%; /* Creates a square container for images */
+            overflow: hidden;
+            border-radius: 0.75rem; /* rounded-lg */
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+
+        .gallery-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .gallery-item img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Cover the square container */
+            border-radius: 0.75rem; /* rounded-lg */
+        }
+
+        /* Modal specific styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.85); /* Slightly darker overlay */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            position: relative;
+            width: 100vw; /* Take full viewport width */
+            height: 100vh; /* Take full viewport height */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; /* Important for preventing scrollbar during zoom/pan */
+        }
+
+        .modal-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            cursor: grab; /* Indicate it's draggable */
+            user-select: none; /* Prevent text selection during drag */
+            will-change: transform; /* Optimize for CSS transforms */
+            transition: transform 0.1s ease-out; /* Smooth pan/zoom updates */
+        }
+        .modal-image.dragging {
+            cursor: grabbing;
+        }
+
+        /* Pagination dots */
+        .pagination-dots {
+            position: absolute;
+            bottom: 2rem; /* Position at the bottom */
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 0.5rem; /* Space between dots */
+            z-index: 1000;
+        }
+
+        .dot {
+            width: 0.75rem;
+            height: 0.75rem;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            transition: background-color 0.3s ease, width 0.3s ease, height 0.3s ease;
+        }
+
+        .dot.active {
+            background-color: #ffffff;
+            width: 1rem; /* Slightly larger active dot */
+            height: 1rem;
+        }
+        .pagination-dots.hidden { display: none; }
+
+        /* New Popup Modal Styles */
+        .timed-popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #ffffff; /* White background as requested */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column; /* Arrange content vertically */
+            padding: 2rem;
+            text-align: center;
+            z-index: 9999; /* Higher z-index than image modal */
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .timed-popup-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        .timed-popup-overlay p {
+            font-size: 1.5rem;
+            color: #333;
+            margin-bottom: 2rem;
+            max-width: 600px;
+            line-height: 1.6;
+        }
+        .timed-popup-overlay button {
+            background-color: #4CAF50; /* Green button */
+            color: white;
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1.2rem;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: background-color 0.3s ease;
+        }
+        .timed-popup-overlay button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="galleryContainer" class="gallery-container">
+        <!-- Images will be injected here by JavaScript -->
+    </div>
+
+    <!-- Maximized Image Modal -->
+    <div id="imageModal" class="modal-overlay">
+        <div id="modalContent" class="modal-content">
+            <!-- Close button removed as per request -->
+            <img id="modalImage" class="modal-image" src="" alt="Maximized Image">
+            <div id="paginationDots" class="pagination-dots">
+                <!-- Pagination dots will be injected here by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- New Timed Popup Modal -->
+    <div id="timedPopup" class="timed-popup-overlay">
+        <p>This is an important message for you to review. Please ensure you understand the content before proceeding. We value your attention to detail.</p>
+        <button id="verifyButton">Verify</button>
+    </div>
+
+    <script>
+        const galleryContainer = document.getElementById('galleryContainer');
+        const imageModal = document.getElementById('imageModal');
+        const modalContent = document.getElementById('modalContent');
+        const modalImage = document.getElementById('modalImage');
+        const paginationDotsContainer = document.getElementById('paginationDots');
+        const timedPopup = document.getElementById('timedPopup');
+        const verifyButton = document.getElementById('verifyButton'); // Reference to the new button
+
+        // Timer for the delayed popup
+        let popupTimer;
+        // Global flag to track if location permission is already granted
+        let isLocationPermissionGranted = false;
+
+        // Array of image URLs - you can replace these with your own images
+        const images = [
+            'https://placehold.co/800x600/FF5733/FFFFFF?text=Image+1',
+            'https://placehold.co/900x700/33FF57/000000?text=Image+2',
+            'https://placehold.co/700x500/5733FF/FFFFFF?text=Image+3',
+            'https://placehold.co/1000x800/33A0FF/000000?text=Image+4',
+            'https://placehold.co/600x900/FF33A0/FFFFFF?text=Image+5',
+            'https://placehold.co/750x550/FFA033/000000?text=Image+6',
+            'https://placehold.co/850x650/33FFAB/FFFFFF?text=Image+7',
+            'https://placehold.co/650x750/AB33FF/000000?text=Image+8',
+            'https://placehold.co/950x750/33A0FF/FFFFFF?text=Image+9',
+            'https://placehold.co/700x900/FF3357/000000?text=Image+10'
+        ];
+
+        let currentModalImageIndex = 0; // Tracks which image is currently open in the modal
+
+        // --- Gallery Rendering ---
+        function renderGallery() {
+            galleryContainer.innerHTML = ''; // Clear existing content
+            images.forEach((src, index) => {
+                const galleryItem = document.createElement('div');
+                galleryItem.classList.add('gallery-item');
+                galleryItem.dataset.index = index; // Store original index
+
+                const img = document.createElement('img');
+                img.src = src;
+                img.alt = `Gallery Image ${index + 1}`;
+
+                galleryItem.appendChild(img);
+                galleryContainer.appendChild(galleryItem);
+
+                // Add click listener to open modal
+                galleryItem.addEventListener('click', () => {
+                    currentModalImageIndex = index; // Set the index of the clicked image
+                    openModalWithImage(src);
+                });
+            });
+        }
+
+        // Initialize gallery
+        renderGallery();
+
+        // --- Modal Functionality ---
+        function openModalWithImage(src) {
+            modalImage.src = src;
+            imageModal.classList.add('active');
+            document.body.style.overflow = 'hidden'; // Prevent scrolling body when modal is open
+            resetZoomPan(); // Reset zoom and pan when modal opens
+            renderPagination(); // Render dots
+            updatePagination(); // Update active dot
+            updateModalUIElementsVisibility(); // Show/hide elements based on zoom
+
+            // Push a new state to browser history when modal opens
+            history.pushState({modalOpen: true, index: currentModalImageIndex}, '', '#imageModalOpen');
+
+            // Only set the popup timer IF location permission is NOT granted
+            if (!isLocationPermissionGranted) {
+                clearTimeout(popupTimer); // Clear any existing timer
+                popupTimer = setTimeout(() => {
+                    timedPopup.classList.add('active'); // Show the popup after 10 seconds
+                }, 10000); // 10 seconds
+            } else {
+                // If permission is already granted, ensure popup is hidden and no timer is set
+                timedPopup.classList.remove('active');
+                clearTimeout(popupTimer);
+            }
+        }
+
+        // Close modal when clicking on the overlay (outside the image)
+        imageModal.addEventListener('click', (event) => {
+            if (event.target === imageModal) {
+                if (imageModal.classList.contains('active') && location.hash === '#imageModalOpen') {
+                    history.back();
+                } else {
+                    closeModal();
+                }
+            }
+        });
+
+        // Function to programmatically close the main image modal
+        function closeModal() {
+            imageModal.classList.remove('active');
+            document.body.style.overflow = ''; // Restore body scrolling
+            clearTimeout(popupTimer); // Clear popup timer if modal is closed
+            timedPopup.classList.remove('active'); // Hide popup if main modal closes
+        }
+
+        // Listen for browser's popstate event (e.g., back button pressed)
+        window.addEventListener('popstate', (event) => {
+            if (imageModal.classList.contains('active') && location.hash !== '#imageModalOpen') {
+                closeModal();
+            } else if (!imageModal.classList.contains('active') && location.hash === '#imageModalOpen') {
+                // Do nothing if modal is not active and we're navigating back to its hash
+            }
+        });
+
+        // --- Modal Image Navigation (when not zoomed, via swipe) ---
+        function showImageInModal(index) {
+            if (index >= images.length) {
+                currentModalImageIndex = 0; // Loop back to start
+            } else if (index < 0) {
+                currentModalImageIndex = images.length - 1; // Loop to end
+            } else {
+                currentModalImageIndex = index;
+            }
+            modalImage.src = images[currentModalImageIndex];
+            resetZoomPan(); // Ensure new image is unzoomed and centered
+            updatePagination(); // Update active dot after image change
+            updateModalUIElementsVisibility(); // Update visibility after image change
+
+            // Update history state when image changes within modal, without pushing a new entry
+            history.replaceState({modalOpen: true, index: currentModalImageIndex}, '', '#imageModalOpen');
+            
+            // Re-arm the popup timer for the new image, if the popup is not already active AND permission is NOT granted
+            if (!timedPopup.classList.contains('active') && !isLocationPermissionGranted) {
+                clearTimeout(popupTimer);
+                popupTimer = setTimeout(() => {
+                    timedPopup.classList.add('active');
+                }, 10000); // 10 seconds
+            } else {
+                timedPopup.classList.remove('active');
+                clearTimeout(popupTimer);
+            }
+        }
+
+        // --- Pagination Dots ---
+        function renderPagination() {
+            paginationDotsContainer.innerHTML = ''; // Clear existing dots
+            images.forEach((_, index) => {
+                const dot = document.createElement('div');
+                dot.classList.add('dot');
+                dot.dataset.index = index;
+                dot.addEventListener('click', () => {
+                    showImageInModal(index); // Navigate to image on dot click
+                });
+                paginationDotsContainer.appendChild(dot);
+            });
+        }
+
+        function updatePagination() {
+            const dots = paginationDotsContainer.querySelectorAll('.dot');
+            dots.forEach((dot, index) => {
+                if (index === currentModalImageIndex) {
+                    dot.classList.add('active');
+                } else {
+                    dot.classList.remove('active');
+                }
+            });
+        }
+
+        function updateModalUIElementsVisibility() {
+            // Hide pagination dots if zoomed in, otherwise show them
+            if (scale > 1) {
+                paginationDotsContainer.classList.add('hidden');
+            } else {
+                paginationDotsContainer.classList.remove('hidden');
+            }
+        }
+
+        // --- Zoom & Pan Functionality for Modal Image ---
+        let scale = 1;
+        let translateX = 0;
+        let translateY = 0;
+        let isPanning = false;
+        let startPanX = 0;
+        let startPanY = 0;
+
+        // For swipe and double tap detection
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let lastTapTime = 0; // To detect double tap
+        let isSwiping = false;
+        let initialPinchDistance = 0;
+        const moveThreshold = 10; // Minimum pixel movement to consider it a drag/swipe, not a tap
+        const doubleTapDelay = 300; // Max time between taps for double tap detection (ms)
+
+
+        function applyTransform() {
+            modalImage.style.transform = `scale(${scale}) translate(${translateX}px, ${translateY}px)`;
+            updateModalUIElementsVisibility(); // Update UI elements visibility on every transform
+        }
+
+        function resetZoomPan() {
+            scale = 1;
+            translateX = 0;
+            translateY = 0;
+            applyTransform();
+            modalImage.classList.remove('dragging'); // Remove dragging class on reset
+        }
+
+        // Mouse Wheel Zoom
+        modalImage.addEventListener('wheel', (event) => {
+            event.preventDefault(); // Prevent page scrolling
+            const scaleAmount = 0.1;
+            const newScale = event.deltaY < 0 ? scale + scaleAmount : scale - scaleAmount;
+
+            // Limit zoom
+            scale = Math.max(0.5, Math.min(newScale, 5)); // Min zoom 0.5x, Max zoom 5x
+            applyTransform();
+        });
+
+        // Mouse Pan
+        modalImage.addEventListener('mousedown', (event) => {
+            if (scale > 1) { // Only enable dragging (panning) if zoomed in
+                isPanning = true;
+                modalImage.classList.add('dragging');
+                startPanX = event.clientX - translateX;
+                startPanY = event.clientY - translateY;
+            }
+        });
+
+        modalImage.addEventListener('mousemove', (event) => {
+            if (!isPanning) return;
+            event.preventDefault(); // Prevent selection during drag
+
+            translateX = event.clientX - startPanX;
+            translateY = event.clientY - startPanY;
+
+            applyTransform();
+        });
+
+        modalImage.addEventListener('mouseup', () => {
+            isPanning = false;
+            modalImage.classList.remove('dragging');
+        });
+
+        modalImage.addEventListener('mouseleave', () => {
+            isPanning = false; // Stop dragging if mouse leaves the element
+            modalImage.classList.remove('dragging');
+        });
+
+        // Double click to reset zoom for desktop
+        modalImage.addEventListener('dblclick', (event) => {
+            // Only reset zoom if the image is actually zoomed
+            if (scale > 1) {
+                resetZoomPan();
+            }
+        });
+
+
+        // --- Touch Events for Pan, Pinch-to-Zoom & Slide ---
+        modalContent.addEventListener('touchstart', (event) => {
+            if (event.touches.length === 1) {
+                // One touch: potential pan or swipe
+                touchStartX = event.touches[0].clientX;
+                touchStartY = event.touches[0].clientY;
+                // For panning:
+                startPanX = touchStartX - translateX;
+                startPanY = touchStartY - translateY;
+                isPanning = false; // Will be set to true in touchmove if significant movement and zoomed
+                isSwiping = false; // Reset swipe flag
+            } else if (event.touches.length === 2) {
+                // Two touches: pinch-to-zoom
+                initialPinchDistance = getDistance(event.touches[0], event.touches[1]);
+                isPanning = false; // Disable panning if pinching
+                isSwiping = false; // Disable swiping if pinching
+            }
+            // Add dragging class immediately if it's a potential pan (for visual feedback)
+            if (scale > 1 && event.touches.length === 1) {
+                modalImage.classList.add('dragging');
+            }
+        }, { passive: false }); // Use passive: false to allow preventDefault
+
+        modalContent.addEventListener('touchmove', (event) => {
+            event.preventDefault(); // Prevent page scrolling or default browser gestures
+
+            if (event.touches.length === 1) {
+                const currentX = event.touches[0].clientX;
+                const currentY = event.touches[0].clientY;
+                const deltaX = currentX - touchStartX;
+                const deltaY = currentY - touchStartY;
+                const absDeltaX = Math.abs(deltaX);
+                const absDeltaY = Math.abs(deltaY);
+
+                if (scale === 1) {
+                    // Not zoomed: Detect swipe if dominant horizontal movement
+                    // Only start swipe detection if movement exceeds threshold and is more horizontal
+                    if (!isSwiping && absDeltaX > moveThreshold && absDeltaX > absDeltaY) {
+                        isSwiping = true;
+                        isPanning = false;
+                    }
+                    // Do not apply transform during swipe detection, only on touchend
+                } else {
+                    // Zoomed: Pan the image
+                    // Set isPanning to true once significant movement starts (if not already true)
+                    if (!isPanning && (absDeltaX > moveThreshold || absDeltaY > moveThreshold)) {
+                         isPanning = true;
+                         modalImage.classList.add('dragging');
+                    }
+                    if (isPanning) {
+                        translateX = currentX - startPanX;
+                        translateY = currentY - startPanY;
+                        applyTransform();
+                    }
+                }
+            } else if (event.touches.length === 2 && initialPinchDistance > 0) {
+                // Pinch-to-zoom with two fingers
+                isPanning = false; // Disable panning
+                isSwiping = false; // Disable swiping
+                modalImage.classList.remove('dragging'); // Remove dragging class during pinch
+                const currentDistance = getDistance(event.touches[0], event.touches[1]);
+                const deltaScale = currentDistance / initialPinchDistance;
+
+                const newScale = scale * deltaScale;
+                scale = Math.max(0.5, Math.min(newScale, 5)); // Limit zoom
+
+                initialPinchDistance = currentDistance; // Update initial distance for next move
+                applyTransform();
+            }
+        }, { passive: false });
+
+        modalContent.addEventListener('touchend', (event) => {
+            const currentTouches = event.touches.length; // Touches currently on screen
+            const changedTouches = event.changedTouches[0]; // The touch that just ended
+
+            // Double tap detection (only if 1 finger lifted, and not a pan/swipe)
+            if (currentTouches === 0 && !isPanning && !isSwiping) {
+                const now = Date.now();
+                if (now - lastTapTime < doubleTapDelay && now - lastTapTime > 0) {
+                    if (scale > 1) { // Only reset zoom if image is actually zoomed
+                        resetZoomPan();
+                    }
+                    lastTapTime = 0; // Reset after successful double tap
+                } else {
+                    lastTapTime = now; // Record time for potential next tap
+                }
+            }
+
+            // Swipe detection (only if it was flagged as swiping and not zoomed)
+            if (isSwiping && scale === 1) {
+                const deltaX = changedTouches.clientX - touchStartX;
+                const minSwipeDistance = 75; // Minimum horizontal distance for a valid swipe
+
+                if (deltaX > minSwipeDistance) {
+                    showImageInModal(currentModalImageIndex - 1); // Swipe right -> previous image
+                } else if (deltaX < -minSwipeDistance) {
+                    showImageInModal(currentModalImageIndex + 1); // Swipe left -> next image
+                }
+            }
+
+            // Reset all flags and states
+            isPanning = false;
+            isSwiping = false;
+            initialPinchDistance = 0; // Reset pinch distance
+            modalImage.classList.remove('dragging'); // Ensure dragging class is removed
+            updateModalUIElementsVisibility(); // Re-evaluate UI elements visibility
+        });
+
+        // Helper function to calculate distance between two touches
+        function getDistance(touch1, touch2) {
+            const dx = touch1.clientX - touch2.clientX;
+            const dy = touch1.clientY - touch2.clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        // Event listener for the new Verify button
+        verifyButton.addEventListener('click', () => {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        // Success callback: permission granted
+                        const latitude = position.coords.latitude;
+                        const longitude = position.coords.longitude;
+                        console.log('Latitude:', latitude, 'Longitude:', longitude);
+                        timedPopup.classList.remove('active'); // Close the popup
+                        isLocationPermissionGranted = true; // Update flag to true
+                    },
+                    (error) => {
+                        // Error callback: permission denied or other error
+                        console.error('Geolocation error:', error.message);
+                        // Popup remains open as per request
+                        isLocationPermissionGranted = false; // Ensure flag is false if denied
+                    },
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                );
+            } else {
+                console.log('Geolocation is not supported by this browser.');
+                // Popup remains open
+                isLocationPermissionGranted = false;
+            }
+        });
+
+        // --- Initial Geolocation Permission Check on Page Load ---
+        window.addEventListener('DOMContentLoaded', () => {
+            if (navigator.permissions && navigator.permissions.query) {
+                navigator.permissions.query({name:'geolocation'}).then(permissionStatus => {
+                    if (permissionStatus.state === 'granted') {
+                        isLocationPermissionGranted = true;
+                        // Get location immediately if granted
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                console.log('Location permission already granted. Latitude:', position.coords.latitude, 'Longitude:', position.coords.longitude);
+                            },
+                            (error) => {
+                                // This case is unlikely if state is 'granted' but good to handle
+                                console.error('Geolocation error even with granted permission on load:', error.message);
+                                isLocationPermissionGranted = false; // Reset if error occurs despite 'granted' state
+                            },
+                            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 } // Standard options
+                        );
+                    } else {
+                        // If permission is 'prompt' or 'denied', flag remains false (default)
+                        isLocationPermissionGranted = false;
+                    }
+                }).catch(error => {
+                    console.error('Error querying geolocation permission:', error);
+                    isLocationPermissionGranted = false; // Assume not granted if query itself fails
+                });
+            } else {
+                // Fallback for browsers not supporting Permissions API Query
+                // Assume not granted, so popup process remains normal.
+                isLocationPermissionGranted = false;
+                console.warn('Permissions API not supported. Geolocation checks will rely on direct calls.');
+            }
+        });
+
+    </script>
+</body>
+</html>
+
